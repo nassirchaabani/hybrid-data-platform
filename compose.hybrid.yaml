@@ -1,0 +1,57 @@
+name: hybrid-data-platform-hybrid
+
+services:
+  db-private:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: association_private
+      POSTGRES_USER: association
+      POSTGRES_PASSWORD: "${PRIVATE_POSTGRES_PASSWORD:?Renseignez le fichier .env.hybrid}"
+    volumes:
+      - private-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U association -d association_private"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [private-net]
+
+  api:
+    build: .
+    env_file:
+      - path: .env.hybrid
+        required: false
+    environment:
+      APP_ENV: "${APP_ENV:-development}"
+      DEPLOYMENT_MODE: hybrid
+      JWT_SECRET: "${JWT_SECRET:?Renseignez le fichier .env.hybrid}"
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-gestionnaire}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Renseignez le fichier .env.hybrid}"
+      PRIVATE_DATABASE_URL: "${PRIVATE_DATABASE_URL:?Renseignez le fichier .env.hybrid}"
+      CLOUD_DATABASE_URL: "${CLOUD_DATABASE_URL:?Renseignez le fichier .env.hybrid}"
+      AUTO_CREATE_SCHEMA: "false"
+      SEED_DEMO_DATA: "${SEED_DEMO_DATA:-true}"
+    ports: ["8000:8000"]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      db-private:
+        condition: service_healthy
+    networks: [frontend-net, private-net]
+    restart: unless-stopped
+
+volumes:
+  private-data:
+
+networks:
+  frontend-net:
+  private-net:
+    internal: true

@@ -1,0 +1,77 @@
+name: hybrid-data-platform
+
+services:
+  db-private:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: association_private
+      POSTGRES_USER: association
+      POSTGRES_PASSWORD: "${PRIVATE_POSTGRES_PASSWORD:?Executez python scripts/create_env.py}"
+    volumes:
+      - private-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U association -d association_private"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [private-net]
+
+  db-cloud:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: association_cloud
+      POSTGRES_USER: association
+      POSTGRES_PASSWORD: "${CLOUD_POSTGRES_PASSWORD:?Executez python scripts/create_env.py}"
+    volumes:
+      - cloud-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U association -d association_cloud"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [cloud-net]
+
+  api:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_ENV: "${APP_ENV:-development}"
+      DEPLOYMENT_MODE: local
+      JWT_SECRET: "${JWT_SECRET:?Executez python scripts/create_env.py}"
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-gestionnaire}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Executez python scripts/create_env.py}"
+      PRIVATE_DATABASE_URL: "${PRIVATE_DATABASE_URL:?Executez python scripts/create_env.py}"
+      CLOUD_DATABASE_URL: "${CLOUD_DATABASE_URL:?Executez python scripts/create_env.py}"
+      AUTO_CREATE_SCHEMA: "false"
+      SEED_DEMO_DATA: "${SEED_DEMO_DATA:-true}"
+    ports: ["8000:8000"]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      db-private:
+        condition: service_healthy
+      db-cloud:
+        condition: service_healthy
+    networks: [frontend-net, private-net, cloud-net]
+    restart: unless-stopped
+
+volumes:
+  private-data:
+  cloud-data:
+
+networks:
+  frontend-net:
+  private-net:
+    internal: true
+  cloud-net:
+    internal: true

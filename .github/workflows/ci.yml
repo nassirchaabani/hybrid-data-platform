@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    env:
+      JWT_SECRET: ci-only-secret-with-at-least-thirty-two-characters
+      ADMIN_USERNAME: ci-user
+      ADMIN_PASSWORD: ci-password-long-enough
+      PRIVATE_POSTGRES_PASSWORD: private-ci
+      CLOUD_POSTGRES_PASSWORD: cloud-ci
+      PRIVATE_DATABASE_URL: postgresql+psycopg://association:private-ci@localhost:5432/association_private
+      CLOUD_DATABASE_URL: postgresql+psycopg://association:cloud-ci@localhost:5433/association_cloud
+      AUTO_CREATE_SCHEMA: "false"
+      SEED_DEMO_DATA: "false"
+
+    services:
+      postgres-private:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_DB: association_private
+          POSTGRES_USER: association
+          POSTGRES_PASSWORD: private-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U association -d association_private"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+      postgres-cloud:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_DB: association_cloud
+          POSTGRES_USER: association
+          POSTGRES_PASSWORD: cloud-ci
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U association -d association_cloud"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Lint
+        run: python -m ruff check .
+      - name: Unit tests
+        run: python -m pytest -m "not integration"
+      - name: Apply both migration histories
+        run: |
+          python -m alembic -c alembic-private.ini upgrade head
+          python -m alembic -c alembic-cloud.ini upgrade head
+      - name: PostgreSQL integration test
+        env:
+          RUN_POSTGRES_TESTS: "1"
+        run: python -m pytest -m integration --no-cov
+      - name: Dependency consistency
+        run: python -m pip check
+      - name: Dependency audit
+        run: python -m pip_audit . --progress-spinner off
+      - name: Validate Compose files
+        run: |
+          docker compose -f compose.yaml config --quiet
+          docker compose -f compose.hybrid.yaml config --quiet
+      - name: Build API image
+        run: docker build -t hybrid-data-platform:test .
