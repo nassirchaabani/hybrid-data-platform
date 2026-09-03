@@ -102,12 +102,4 @@ Des notes complémentaires sont disponibles dans
 [docs/architecture.md](docs/architecture.md), [docs/api.md](docs/api.md) et
 [docs/decisions.md](docs/decisions.md).
 
-## Formulation CV
-
-**Hybrid Data Platform — projet personnel (Python, FastAPI, PostgreSQL, Docker)**
-
-- conception d'une API séparant données personnelles locales et activités pseudonymisées distantes ;
-- mise en place d'une fédération applicative, de JWT et de migrations Alembic par base ;
-- automatisation des tests PostgreSQL, du lint et du build Docker avec GitHub Actions.
-
 Licence MIT — Nassir Chaabani.
